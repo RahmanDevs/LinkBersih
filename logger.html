@@ -1,0 +1,426 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>LinkBersih | Log Monitor</title>
+
+    <link
+      rel="apple-touch-icon"
+      sizes="180x180"
+      href="assets/favicon/apple-touch-icon.png"
+    />
+    <link
+      rel="icon"
+      type="image/png"
+      sizes="32x32"
+      href="assets/favicon/favicon-32x32.png"
+    />
+    <link
+      rel="icon"
+      type="image/png"
+      sizes="16x16"
+      href="assets/favicon/favicon-16x16.png"
+    />
+    <link rel="manifest" href="assets/favicon/site.webmanifest" />
+
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link
+      href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap"
+      rel="stylesheet"
+    />
+    <link
+      href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/css/bootstrap.min.css"
+      rel="stylesheet"
+    />
+
+    <link rel="stylesheet" href="style.css" />
+    <style>
+      :root {
+        --bg-main: #f8fafc;
+        --bg-card: #ffffff;
+        --primary-blue: #2563eb;
+        --dark-blue: #0f172a;
+        --accent-yellow: #f59e0b;
+        --border-color: #e2e8f0;
+        --text-muted: #64748b;
+      }
+
+      body {
+        background-color: var(--bg-main);
+        color: var(--dark-blue);
+        font-family: "Plus Jakarta Sans", sans-serif;
+        min-height: 100vh;
+        display: flex;
+        flex-direction: column;
+      }
+
+      .glow-bg {
+        position: absolute;
+        top: -100px;
+        left: 50%;
+        transform: translateX(-50%);
+        width: 100%;
+        max-width: 1000px;
+        height: 400px;
+        background:
+          radial-gradient(
+            circle at 30% 20%,
+            rgba(37, 99, 235, 0.08) 0%,
+            transparent 50%
+          ),
+          radial-gradient(
+            circle at 70% 30%,
+            rgba(245, 158, 11, 0.08) 0%,
+            transparent 40%
+          );
+        z-index: -1;
+        pointer-events: none;
+      }
+
+      /* Navbar */
+      .navbar {
+        background-color: rgba(255, 255, 255, 0.85) !important;
+        backdrop-filter: blur(12px);
+        border-bottom: 2px solid var(--border-color);
+      }
+
+      .navbar-brand {
+        font-weight: 800;
+        color: var(--dark-blue) !important;
+        letter-spacing: -0.5px;
+      }
+
+      .brand-dot {
+        color: var(--accent-yellow);
+      }
+
+      .nav-link {
+        color: var(--text-muted) !important;
+        font-weight: 600;
+        transition: color 0.2s ease;
+      }
+
+      .nav-link:hover,
+      .nav-link.active {
+        color: var(--primary-blue) !important;
+      }
+
+      /* Title Section */
+      .page-title {
+        font-weight: 800;
+        letter-spacing: -1px;
+        color: var(--dark-blue);
+      }
+
+      /* Card Search & Filter */
+      .filter-card {
+        background-color: var(--bg-card);
+        border: 1px solid var(--border-color);
+        border-top: 4px solid var(--accent-yellow);
+        border-radius: 16px;
+        box-shadow: 0 10px 25px -5px rgba(37, 99, 235, 0.05);
+      }
+
+      .form-control-custom,
+      .form-select-custom {
+        background-color: #f1f5f9;
+        border: 1px solid var(--border-color);
+        color: var(--dark-blue);
+        padding: 0.6rem 1rem;
+        border-radius: 10px;
+        font-weight: 500;
+      }
+
+      .form-control-custom:focus,
+      .form-select-custom:focus {
+        background-color: #ffffff;
+        border-color: var(--primary-blue);
+        color: var(--dark-blue);
+        box-shadow: 0 0 0 3px rgba(37, 99, 235, 0.15);
+      }
+
+      .btn-search {
+        background-color: var(--primary-blue);
+        border: none;
+        color: #ffffff;
+        font-weight: 700;
+        border-radius: 10px;
+        padding: 0.6rem 1.4rem;
+        transition: all 0.2s ease;
+      }
+
+      .btn-search:hover {
+        background-color: #1d4ed8;
+        color: #ffffff;
+        box-shadow: 0 4px 12px rgba(37, 99, 235, 0.25);
+      }
+
+      /* Table Container */
+      .table-container {
+        background: var(--bg-card);
+        border: 1px solid var(--border-color);
+        border-radius: 16px;
+        overflow: hidden;
+        box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.02);
+      }
+
+      .table {
+        margin-bottom: 0;
+        color: var(--dark-blue);
+      }
+
+      .table th {
+        background-color: #eff6ff;
+        color: var(--primary-blue);
+        font-weight: 700;
+        font-size: 0.85rem;
+        text-transform: uppercase;
+        letter-spacing: 0.5px;
+        padding: 1rem 1.2rem;
+        border-bottom: 1px solid var(--border-color);
+      }
+
+      .table td {
+        padding: 0.9rem 1.2rem;
+        border-bottom: 1px solid var(--border-color);
+        background-color: #ffffff;
+      }
+
+      .table-hover tbody tr:hover td {
+        background-color: #f8fafc;
+      }
+
+      /* Custom Badges */
+      .badge-safe {
+        background-color: #dcfce7;
+        color: #15803d;
+        border: 1px solid #bbf7d0;
+        padding: 5px 10px;
+        border-radius: 20px;
+        font-weight: 600;
+      }
+
+      .badge-danger {
+        background-color: #fef2f2;
+        color: #b91c1c;
+        border: 1px solid #fecaca;
+        padding: 5px 10px;
+        border-radius: 20px;
+        font-weight: 600;
+      }
+
+      /* Custom Pagination */
+      .pagination .page-link {
+        color: var(--dark-blue);
+        border-color: var(--border-color);
+        font-weight: 600;
+        padding: 0.5rem 0.85rem;
+        border-radius: 8px;
+        margin: 0 2px;
+      }
+
+      .pagination .page-item.active .page-link {
+        background-color: var(--primary-blue);
+        border-color: var(--primary-blue);
+        color: #ffffff;
+      }
+
+      .pagination .page-link:hover {
+        background-color: #eff6ff;
+        color: var(--primary-blue);
+      }
+
+      /* Footer */
+      footer {
+        background-color: #ffffff !important;
+        border-top: 1px solid var(--border-color);
+        margin-top: auto;
+      }
+
+      footer a {
+        color: var(--text-muted);
+        text-decoration: none;
+        transition: color 0.2s;
+      }
+
+      footer a:hover {
+        color: var(--primary-blue);
+      }
+    </style>
+  </head>
+  <body>
+    <div class="glow-bg"></div>
+
+    <nav class="navbar navbar-expand-lg sticky-top">
+      <div class="container">
+        <a class="navbar-brand d-flex align-items-center gap-2" href="#">
+          <img
+            src="assets/icon_link_bersih.webp"
+            alt="Logo"
+            width="32"
+            height="32"
+            class="rounded-circle"
+          />
+          LinkBersih<span class="brand-dot">.id</span>
+        </a>
+        <button
+          class="navbar-toggler border-0"
+          type="button"
+          data-bs-toggle="collapse"
+          data-bs-target="#navbarNav"
+          aria-controls="navbarNav"
+          aria-expanded="false"
+          aria-label="Toggle navigation"
+        >
+          <span class="navbar-toggler-icon"></span>
+        </button>
+        <div class="collapse navbar-collapse" id="navbarNav">
+          <ul class="navbar-nav ms-auto gap-2 mt-3 mt-lg-0">
+            <li class="nav-item">
+              <a class="nav-link" href="index.html">Home</a>
+            </li>
+            <li class="nav-item">
+              <a class="nav-link active" aria-current="page" href="logger.html"
+                >Log Monitor</a
+              >
+            </li>
+            <li class="nav-item">
+              <a class="nav-link" href="#">Open Contribution</a>
+            </li>
+          </ul>
+        </div>
+      </div>
+    </nav>
+    <main class="container py-5">
+      <div
+        class="d-flex flex-column flex-md-row align-items-md-center justify-content-between mb-4 gap-2"
+      >
+        <div>
+          <h1 class="h2 page-title mb-1">Log Monitor Table</h1>
+          <p class="text-muted small mb-0">
+            Real-time inspection logs & phishing detection records.
+          </p>
+        </div>
+      </div>
+
+      <div class="card filter-card p-3 mb-4">
+        <form class="row g-2 align-items-center">
+          <div class="col-lg-7 col-md-6">
+            <input
+              type="text"
+              class="form-control form-control-custom"
+              placeholder="Search URL or Domain..."
+            />
+          </div>
+          <div class="col-lg-3 col-md-4">
+            <select class="form-select form-select-custom">
+              <option value="all" selected>All Status</option>
+              <option value="safe">Safe Only</option>
+              <option value="phishing">Phishing Only</option>
+            </select>
+          </div>
+          <div class="col-lg-2 col-md-2 d-grid">
+            <button class="btn btn-search" type="submit">Filter</button>
+          </div>
+        </form>
+      </div>
+
+      <div class="table-container mb-4">
+        <div class="table-responsive">
+          <table class="table table-hover align-middle">
+            <thead>
+              <tr>
+                <th scope="col" style="width: 70px">ID</th>
+                <th scope="col">Scanned URL</th>
+                <th scope="col">Status</th>
+                <th scope="col">Date Checked</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr>
+                <td class="text-muted fw-semibold">#1020</td>
+                <td class="fw-medium text-dark">https://example.com/login</td>
+                <td><span class="badge badge-safe">Safe</span></td>
+                <td class="text-muted small">2026-03-01 14:22:10</td>
+              </tr>
+              <tr>
+                <td class="text-muted fw-semibold">#1019</td>
+                <td class="fw-medium text-dark">
+                  https://secure-bank-verify-update.info
+                </td>
+                <td><span class="badge badge-danger">Phishing</span></td>
+                <td class="text-muted small">2026-03-01 14:18:05</td>
+              </tr>
+              <tr>
+                <td class="text-muted fw-semibold">#1018</td>
+                <td class="fw-medium text-dark">
+                  https://github.com/repository/check
+                </td>
+                <td><span class="badge badge-safe">Safe</span></td>
+                <td class="text-muted small">2026-03-01 13:45:12</td>
+              </tr>
+              <tr>
+                <td class="text-muted fw-semibold">#1017</td>
+                <td class="fw-medium text-dark">
+                  http://free-gift-claim-now.xyz
+                </td>
+                <td><span class="badge badge-danger">Phishing</span></td>
+                <td class="text-muted small">2026-03-01 12:30:44</td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+
+      <div
+        class="d-flex flex-column flex-sm-row justify-content-between align-items-center gap-3"
+      >
+        <span class="text-muted small">Showing 1-20 of 142 entries</span>
+        <nav aria-label="Page navigation">
+          <ul class="pagination pagination-sm mb-0">
+            <li class="page-item disabled">
+              <a class="page-link" href="#" aria-label="Previous">&laquo;</a>
+            </li>
+            <li class="page-item active">
+              <a class="page-link" href="#">1</a>
+            </li>
+            <li class="page-item"><a class="page-link" href="#">2</a></li>
+            <li class="page-item"><a class="page-link" href="#">3</a></li>
+            <li class="page-item"><a class="page-link" href="#">...</a></li>
+            <li class="page-item"><a class="page-link" href="#">8</a></li>
+            <li class="page-item">
+              <a class="page-link" href="#" aria-label="Next">&raquo;</a>
+            </li>
+          </ul>
+        </nav>
+      </div>
+    </main>
+    <footer class="py-4">
+      <div class="container">
+        <div class="row align-items-center">
+          <div class="col-md-6 text-center text-md-start mb-3 mb-md-0">
+            <strong class="text-dark"
+              >LinkBersih<span class="brand-dot">.id</span></strong
+            >
+            <p class="mb-0 small text-muted">
+              Protecting you from phishing since 2024
+            </p>
+          </div>
+          <div class="col-md-6 text-center text-md-end">
+            <a href="#" class="me-3 small">About</a>
+            <a href="#" class="me-3 small">Privacy</a>
+            <a href="#" class="small">Contact</a>
+          </div>
+        </div>
+        <hr class="my-3 border-secondary opacity-25" />
+        <div class="text-center small text-muted">
+          © 2024 LinkBersih.id. All rights reserved.
+        </div>
+      </div>
+    </footer>
+
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/js/bootstrap.bundle.min.js"></script>
+  </body>
+</html>
