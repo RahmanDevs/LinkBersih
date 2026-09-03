@@ -1,0 +1,55 @@
+<!-- prettier-ignore -->
+{% extends 'base.html' %} 
+
+{% block title %}
+LinkBersih | Check Link Phishing with AI
+{% endblock %} 
+
+{% block content %}
+<!-- Hero Section -->
+<div class="text-center my-4">
+  <h1 class="display-5 hero-title mb-3">Save <span>Our</span> Privacy</h1>
+  <p class="lead text-muted mx-auto" style="max-width: 520px; font-size: 1.05rem">Protect yourself from phishing and scam.</p>
+</div>
+
+<!-- Search Input -->
+<div class="card custom-card p-2 mb-5 mx-auto" style="max-width: 760px">
+  <div class="card-body p-2">
+    <form class="d-flex flex-column flex-sm-row gap-2" method="POST" action="">
+      {% csrf_token %}
+      <input type="url" name="url" class="form-control form-control-custom form-control-lg" placeholder="Paste suspicious link here..." required />
+      <button class="btn btn-custom text-nowrap" type="submit">Check Safety</button>
+    </form>
+  </div>
+</div>
+
+<!-- Results Table -->
+<div class="table-container mx-auto" style="max-width: 900px">
+  <div class="table-responsive">
+    <table class="table table-hover align-middle">
+      <thead>
+        <tr>
+          <th scope="col" style="width: 80px">No.</th>
+          <th scope="col">URL</th>
+          <th scope="col">Status</th>
+          <th scope="col">Date Scanned</th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr>
+          <td class="text-muted">1</td>
+          <td class="fw-medium text-dark">https://example.com</td>
+          <td><span class="badge badge-safe">Safe</span></td>
+          <td class="text-muted small">2026-01-15</td>
+        </tr>
+        <tr>
+          <td class="text-muted">2</td>
+          <td class="fw-medium text-dark">https://malicious.com</td>
+          <td><span class="badge badge-danger">Phishing</span></td>
+          <td class="text-muted small">2026-01-14</td>
+        </tr>
+      </tbody>
+    </table>
+  </div>
+</div>
+{% endblock %}
