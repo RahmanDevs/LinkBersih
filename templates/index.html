@@ -1,55 +1,187 @@
 <!-- prettier-ignore -->
 {% extends 'base.html' %} 
 
-{% block title %}
-LinkBersih | Check Link Phishing with AI
-{% endblock %} 
+{% block title %}LinkBersih | Phishing Detection{% endblock %} 
 
 {% block content %}
-<!-- Hero Section -->
+<!-- Loading Overlay Modern dengan Glassmorphism (Tambahan Baru) -->
+<div id="loadingOverlay" class="d-none position-fixed top-0 start-0 w-100 h-100 d-flex flex-column align-items-center justify-content-center" style="z-index: 9999; background: rgba(255, 255, 255, 0.85); backdrop-filter: blur(8px);">
+  <div class="card custom-card border-0 shadow-lg p-4 text-center" style="max-width: 380px; border-radius: 20px;">
+    <div class="spinner-border text-primary mx-auto mb-3" style="width: 3rem; height: 3rem;" role="status">
+      <span class="visually-hidden">Loading...</span>
+    </div>
+    <h5 class="fw-bold text-dark mb-1">Menganalisis Keamanan URL</h5>
+    <p id="loadingStatusText" class="text-muted small mb-0">Menginisialisasi mesin pemindai...</p>
+    
+    <!-- Animated Progress Bar -->
+    <div class="progress mt-3" style="height: 6px;">
+      <div id="loadingProgressBar" class="progress-bar progress-bar-striped progress-bar-animated bg-primary" role="progressbar" style="width: 15%"></div>
+    </div>
+  </div>
+</div>
+
+<!-- Hero (Asli) -->
 <div class="text-center my-4">
   <h1 class="display-5 hero-title mb-3">Save <span>Our</span> Privacy</h1>
   <p class="lead text-muted mx-auto" style="max-width: 520px; font-size: 1.05rem">Protect yourself from phishing and scam.</p>
 </div>
 
-<!-- Search Input -->
-<div class="card custom-card p-2 mb-5 mx-auto" style="max-width: 760px">
+<!-- Search (Asli + Ditambahkan ID pada Form) -->
+<div class="card custom-card p-2 mb-4 mx-auto" style="max-width: 760px">
   <div class="card-body p-2">
-    <form class="d-flex flex-column flex-sm-row gap-2" method="POST" action="">
+    <form id="scanForm" class="d-flex flex-column flex-sm-row gap-2" method="POST" action="{% url 'home' %}">
       {% csrf_token %}
-      <input type="url" name="url" class="form-control form-control-custom form-control-lg" placeholder="Paste suspicious link here..." required />
+      <input type="url" name="url" class="form-control form-control-custom form-control-lg" placeholder="Paste URL here..." required />
       <button class="btn btn-custom text-nowrap" type="submit">Check Safety</button>
     </form>
   </div>
 </div>
 
-<!-- Results Table -->
-<div class="table-container mx-auto" style="max-width: 900px">
-  <div class="table-responsive">
-    <table class="table table-hover align-middle">
-      <thead>
-        <tr>
-          <th scope="col" style="width: 80px">No.</th>
-          <th scope="col">URL</th>
-          <th scope="col">Status</th>
-          <th scope="col">Date Scanned</th>
-        </tr>
-      </thead>
-      <tbody>
-        <tr>
-          <td class="text-muted">1</td>
-          <td class="fw-medium text-dark">https://example.com</td>
-          <td><span class="badge badge-safe">Safe</span></td>
-          <td class="text-muted small">2026-01-15</td>
-        </tr>
-        <tr>
-          <td class="text-muted">2</td>
-          <td class="fw-medium text-dark">https://malicious.com</td>
-          <td><span class="badge badge-danger">Phishing</span></td>
-          <td class="text-muted small">2026-01-14</td>
-        </tr>
-      </tbody>
-    </table>
+{% if scan_result %}
+<!-- Result Card (Asli) -->
+<div class="card custom-card mx-auto mb-4 p-3 style-result border-0 shadow-sm" style="max-width: 760px">
+  <div class="d-flex align-items-center justify-content-between flex-wrap gap-2 mb-2">
+    <h5 class="mb-0 fw-bold">Scan Result</h5>
+    {% if scan_result.classification == 'SAFE' %}
+      <span class="badge badge-safe fs-6">Safe</span>
+    {% elif scan_result.classification == 'SUSPICIOUS' %}
+      <span class="badge bg-warning text-dark fs-6">Suspicious</span>
+    {% else %}
+      <span class="badge badge-danger fs-6">Phishing</span>
+    {% endif %}
+  </div>
+  <p class="mb-2 text-break"><strong>URL:</strong> <code>{{ scan_result.url }}</code></p>
+  <div class="row g-2 small text-muted">
+    <div class="col-sm-6">
+      <strong>Confidence:</strong> {{ scan_result.confidence_score|floatformat:2 }}
+    </div>
+    <div class="col-sm-6">
+      <strong>Time:</strong> {{ scan_result.date_scanned|date:"Y-m-d H:i:s" }}
+    </div>
+  </div>
+  <div class="mt-2">
+    <strong class="d-block small text-secondary mb-1">Verdict:</strong>
+    <p class="mb-0">{{ scan_result.hermes_verification_detail.ai_notes }}</p>
   </div>
 </div>
+
+<!-- Analysis (Asli) -->
+<div class="card custom-card mx-auto p-3 border-0 shadow-sm" style="max-width: 900px">
+  <h6 class="fw-bold mb-3 text-secondary">Detailed Analysis</h6>
+
+  <!-- Threat Level -->
+  <div class="row mb-3">
+    <div class="col-md-6">
+      <strong class="d-block text-secondary small mb-1">Threat Level:</strong>
+      <span class="badge {% if scan_result.hermes_verification_detail.threat_level == 'CRITICAL' %}badge-danger{% elif scan_result.hermes_verification_detail.threat_level == 'HIGH' %}bg-warning text-dark{% else %}badge-safe{% endif %}">
+        {{ scan_result.hermes_verification_detail.threat_level }}
+      </span>
+    </div>
+  </div>
+
+  <!-- Domain Analysis (40%) -->
+  {% with domain=scan_result.string_analysis_detail.domain %}
+  {% if domain.reasons or domain.domain_confidence > 0 %}
+  <div class="border-top pt-3">
+    <strong class="d-block mb-2 text-secondary small">Domain Analysis (40%)</strong>
+    <p class="mb-1"><strong>Confidence:</strong> {{ domain.domain_confidence|floatformat:2 }}</p>
+    {% if domain.reasons %}
+    <ul class="mb-0 small ps-3">
+      {% for reason in domain.reasons %}<li>{{ reason }}</li>{% endfor %}
+    </ul>
+    {% endif %}
+  </div>
+  {% endif %}
+  {% endwith %}
+
+  <!-- String Analysis (30%) -->
+  {% with string=scan_result.string_analysis_detail.string %}
+  {% if string.reasons or string.string_confidence > 0 %}
+  <div class="border-top pt-3 mt-3">
+    <strong class="d-block mb-2 text-secondary small">String Analysis (30%)</strong>
+    <p class="mb-1"><strong>Confidence:</strong> {{ string.string_confidence|floatformat:2 }}</p>
+    {% if string.reasons %}
+    <ul class="mb-0 small ps-3">
+      {% for reason in string.reasons %}<li>{{ reason }}</li>{% endfor %}
+    </ul>
+    {% endif %}
+  </div>
+  {% endif %}
+  {% endwith %}
+
+  <!-- LLM Analysis (30%) -->
+  {% with llm=scan_result.llm_analysis_detail %}
+  {% if llm.llm_confidence > 0 %}
+  <div class="border-top pt-3 mt-3">
+    <strong class="d-block mb-2 text-secondary small">LangChain Agent (30%)</strong>
+    <div class="row">
+      <div class="col-md-6">
+        <p class="mb-1"><strong>Confidence:</strong> {{ llm.llm_confidence|floatformat:2 }}</p>
+      </div>
+      <div class="col-md-6">
+        <p class="mb-1"><strong>Prediction:</strong> 
+          <span class="badge {% if llm.llm_prediction == 'PHISHING' %}badge-danger{% else %}badge-safe{% endif %}">
+            {{ llm.llm_prediction }}
+          </span>
+        </p>
+      </div>
+    </div>
+    {% if llm.llm_reasons %}
+    <ul class="mb-0 small ps-3 mt-2">
+      {% for reason in llm.llm_reasons %}<li>{{ reason }}</li>{% endfor %}
+    </ul>
+    {% endif %}
+    {% if llm.raw_output %}
+    <pre class="small p-2 bg-light rounded mt-2">{{ llm.raw_output|truncatechars:300 }}</pre>
+    {% endif %}
+  </div>
+  {% endif %}
+  {% endwith %}
+
+  <!-- Recommendation -->
+  <div class="border-top pt-3 mt-3">
+    <strong class="d-block mb-2 text-secondary small">Recommendation:</strong>
+    {% if scan_result.classification == 'SAFE' %}
+      <p class="mb-0 text-success">URL is safe. You can access it.</p>
+    {% elif scan_result.classification == 'SUSPICIOUS' %}
+      <p class="mb-0 text-warning">URL is suspicious. Be cautious with personal data.</p>
+    {% else %}
+      <p class="mb-0 text-danger">URL is phishing! Do not access or enter any data.</p>
+    {% endif %}
+  </div>
+</div>
+{% endif %}
+
+<!-- JavaScript Handling Loading Overlay (Tambahan Baru) -->
+<script>
+  document.addEventListener('DOMContentLoaded', function () {
+    const scanForm = document.getElementById('scanForm');
+    const loadingOverlay = document.getElementById('loadingOverlay');
+    const statusText = document.getElementById('loadingStatusText');
+    const progressBar = document.getElementById('loadingProgressBar');
+
+    // Tahapan sesuai dengan rantai analisis (Domain Analysis -> String Analysis -> LLM Agent)
+    const steps = [
+      { text: 'Mengekstrak parameter URL & pola string...', progress: '25%' },
+      { text: 'Memeriksa record WHOIS & umur domain...', progress: '50%' },
+      { text: 'Menganalisis entropi domain & brand squatting...', progress: '75%' },
+      { text: 'Menjalankan AI Agent (LangChain reasoning)...', progress: '90%' }
+    ];
+
+    if (scanForm) {
+      scanForm.addEventListener('submit', function () {
+        loadingOverlay.classList.remove('d-none');
+        
+        let stepIndex = 0;
+        setInterval(() => {
+          if (stepIndex < steps.length) {
+            statusText.textContent = steps[stepIndex].text;
+            progressBar.style.width = steps[stepIndex].progress;
+            stepIndex++;
+          }
+        }, 1000);
+      });
+    }
+  });
+</script>
 {% endblock %}
