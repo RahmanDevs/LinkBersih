@@ -1,7 +1,7 @@
 [project]
 name = "linkbersih"
 version = "0.1.0"
-description = "Add your description here"
+description = "Tools Prevent from link phising and scaming in world wide web"
 readme = "README.md"
 requires-python = ">=3.13"
 dependencies = [
