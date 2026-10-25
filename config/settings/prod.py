@@ -4,14 +4,22 @@ from .base import *
 
 DEBUG = False
 
-# Ambil allowed hosts & secret key dari Environment Variables
-ALLOWED_HOSTS = os.environ.get('ALLOWED_HOSTS', '').split(',')
+# Secret Key validation in production
 SECRET_KEY = os.environ.get('DJANGO_SECRET')
+if not SECRET_KEY:
+    raise RuntimeError("DJANGO_SECRET environment variable must be set in production mode!")
 
-# Keamanan HTTPS / Cookie
-SECURE_SSL_REDIRECT = True
+# Allowed Hosts
+ALLOWED_HOSTS = [h.strip() for h in os.environ.get('ALLOWED_HOSTS', '').split(',') if h.strip()]
+if not ALLOWED_HOSTS:
+    ALLOWED_HOSTS = ['localhost', '127.0.0.1']
+
+# Security Headers & Cookie Hardening
+SECURE_SSL_REDIRECT = os.environ.get('SECURE_SSL_REDIRECT', 'True').lower() in ('true', '1')
 SESSION_COOKIE_SECURE = True
 CSRF_COOKIE_SECURE = True
-SECURE_BROWSER_XSS_FILTER = True
-
-# Database Production (misal: PostgreSQL) bisa dikonfigurasi via env var
+SECURE_CONTENT_TYPE_NOSNIFF = True
+X_FRAME_OPTIONS = 'DENY'
+SECURE_HSTS_SECONDS = 31536000  # 1 year
+SECURE_HSTS_INCLUDE_SUBDOMAINS = True
+SECURE_HSTS_PRELOAD = True

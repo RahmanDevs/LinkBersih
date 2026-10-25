@@ -1,5 +1,7 @@
+import ipaddress
 import math
 import re
+import socket
 from datetime import datetime, timezone
 from typing import Any, Dict, List
 from urllib.parse import urlparse, urljoin
@@ -68,10 +70,29 @@ class PhishingDetectorService:
     STRING_WEIGHT = 0.15
     LLM_WEIGHT = 0.15
 
-    # Updated thresholds based on confidence score percentage
-    SAFE_THRESHOLD = 0.80      # 80%-100%: AMAN
-    SUSPICIOUS_THRESHOLD = 0.50  # 50%-79%: MENCURIGAKAN
-    PHISHING_THRESHOLD = 0.0    # 0%-49%: BERBAHAYA/PHISHING
+    # Risk Score Thresholds (0.0 = completely benign, 1.0 = highly malicious)
+    PHISHING_THRESHOLD = 0.70    # >= 0.70: BERBAHAYA/PHISHING (Critical Threat)
+    SUSPICIOUS_THRESHOLD = 0.40  # >= 0.40: MENCURIGAKAN (High/Medium Threat)
+    SAFE_THRESHOLD = 0.40        # < 0.40: AMAN (Low Threat)
+
+    MULTI_PART_TLDS = {
+        # Indonesia
+        "co.id", "web.id", "or.id", "ac.id", "sch.id", "go.id", "mil.id", "biz.id", "my.id", "net.id",
+        # United Kingdom
+        "co.uk", "org.uk", "me.uk", "ltd.uk", "plc.uk", "net.uk", "sch.uk", "ac.uk", "gov.uk",
+        # Australia
+        "com.au", "net.au", "org.au", "edu.au", "gov.au",
+        # Singapore & Malaysia
+        "com.sg", "edu.sg", "gov.sg", "net.sg", "org.sg",
+        "com.my", "net.my", "org.my", "gov.my", "edu.my",
+        # Japan
+        "co.jp", "ne.jp", "or.jp", "go.jp", "ac.jp",
+        # Brazil & others
+        "com.br", "net.br", "org.br",
+        "co.nz", "net.nz", "org.nz",
+        "com.ph", "net.ph", "org.ph",
+        "co.za", "org.za", "net.za",
+    }
 
     SUSPICIOUS_TLDS = {
         "tk",
@@ -199,7 +220,7 @@ class PhishingDetectorService:
         "hulu.com",
         "viu.com",
         "wetv.vip",
-        " Vidio.com",
+        "vidio.com",
 
         # Payment & Fintech
         "paypal.com",
@@ -217,6 +238,7 @@ class PhishingDetectorService:
         # Bank Indonesia
         "bca.co.id",
         "bca.com",
+        "klikbca.com",
         "mandiri.co.id",
         "mandiri.com",
         "bni.co.id",
@@ -226,7 +248,8 @@ class PhishingDetectorService:
         "btn.co.id",
         "btn.com",
         "danamon.co.id",
-        "cimb Niaga.com",
+        "cimbniaga.co.id",
+        "cimbniaga.com",
         "paninbank.co.id",
         "megatama.co.id",
         "bukopin.co.id",
@@ -241,9 +264,7 @@ class PhishingDetectorService:
         "jago.com",
         "neobank.co.id",
         "blu.bca.co.id",
-        "Bank Jago",
         "tyme.com",
-        "Sea Bank",
         "seabank.co.id",
 
         # Ride Hailing & Delivery
@@ -425,10 +446,19 @@ class PhishingDetectorService:
         if not url:
             raise ValueError("URL cannot be empty.")
 
+        # Disallow non-http(s) schemes like javascript:, file:, ftp:, data:, mailto:
+        if ":" in url:
+            scheme = url.split(":", 1)[0].lower().strip()
+            if scheme not in ("http", "https"):
+                raise ValueError(f"Prohibited URL scheme: '{scheme}'. Only HTTP and HTTPS protocols are allowed.")
+
         if not re.match(r"^https?://", url, re.IGNORECASE):
             url = "https://" + url
 
         parsed = urlparse(url)
+
+        if parsed.scheme.lower() not in ("http", "https"):
+            raise ValueError("Only HTTP and HTTPS protocols are allowed.")
 
         if not parsed.hostname:
             raise ValueError("Invalid URL or hostname.")
@@ -439,6 +469,91 @@ class PhishingDetectorService:
     def extract_hostname(url: str) -> str:
         parsed = urlparse(url)
         return (parsed.hostname or "").lower()
+
+    @classmethod
+    def extract_domain_parts(cls, hostname: str):
+        """
+        Extract registered_domain, domain_label, and subdomains accurately,
+        supporting multi-part ccTLDs like .co.id, .co.uk, etc.
+        """
+        hostname_lower = (hostname or "").lower().strip()
+        parts = hostname_lower.split(".")
+        if len(parts) <= 1:
+            return hostname_lower, hostname_lower, []
+
+        # Check if the last two parts match known multi-part TLDs (e.g. co.id, co.uk)
+        if len(parts) >= 3 and ".".join(parts[-2:]) in cls.MULTI_PART_TLDS:
+            registered_domain = ".".join(parts[-3:])
+            domain_label = parts[-3]
+            subdomains = parts[:-3]
+        else:
+            registered_domain = ".".join(parts[-2:])
+            domain_label = parts[-2]
+            subdomains = parts[:-2] if len(parts) > 2 else []
+
+        return registered_domain, domain_label, subdomains
+
+    @staticmethod
+    def validate_safe_url(url: str) -> tuple[bool, str]:
+        """
+        Validate URL scheme and resolve host to ensure it does not point
+        to private, loopback, link-local, multicast, or reserved IP ranges (SSRF defense).
+        """
+        try:
+            parsed = urlparse(url)
+            scheme = (parsed.scheme or "").lower()
+            if scheme not in ("http", "https"):
+                return False, f"Prohibited URL scheme: '{scheme}'. Only HTTP and HTTPS are permitted."
+
+            hostname = (parsed.hostname or "").lower()
+            if not hostname:
+                return False, "Missing or invalid hostname."
+
+            # Explicit localhost blocking
+            if hostname in ("localhost", "localhost.localdomain", "broadcasthost"):
+                return False, "Access to localhost is blocked."
+
+            # Explicit cloud metadata endpoint blocking
+            if hostname in ("metadata.google.internal", "instance-data"):
+                return False, "Access to cloud metadata endpoints is blocked."
+
+            # Check if hostname is direct IP literal
+            try:
+                direct_ip = ipaddress.ip_address(hostname)
+                if (
+                    direct_ip.is_private
+                    or direct_ip.is_loopback
+                    or direct_ip.is_link_local
+                    or direct_ip.is_reserved
+                    or direct_ip.is_multicast
+                    or direct_ip.is_unspecified
+                ):
+                    return False, f"SSRF blocked: IP address '{hostname}' is private, loopback, or reserved."
+            except ValueError:
+                pass
+
+            # Resolve DNS
+            try:
+                addr_info = socket.getaddrinfo(hostname, None)
+            except socket.gaierror:
+                return False, f"DNS resolution failed for host '{hostname}'"
+
+            for item in addr_info:
+                ip_str = item[4][0]
+                ip = ipaddress.ip_address(ip_str)
+                if (
+                    ip.is_private
+                    or ip.is_loopback
+                    or ip.is_link_local
+                    or ip.is_reserved
+                    or ip.is_multicast
+                    or ip.is_unspecified
+                ):
+                    return False, f"SSRF blocked: IP address '{ip_str}' is private, loopback, or reserved."
+
+            return True, ""
+        except Exception as e:
+            return False, f"URL security validation error: {str(e)}"
 
     @staticmethod
     def calculate_entropy(text: str) -> float:
@@ -462,22 +577,21 @@ class PhishingDetectorService:
         if not hostname:
             return False
 
-        parts = hostname.split(".")
-        hostname_lower = hostname.lower()
+        hostname_lower = hostname.lower().strip()
+        registered_domain, _, _ = cls.extract_domain_parts(hostname_lower)
 
         # 1. Check exact hostname match (contoh: "google.com")
         if hostname_lower in cls.WHITELIST_DOMAINS:
             return True
 
-        # 2. Check registered domain (last 2 parts, contoh: "google.com" dari "www.google.com")
-        if len(parts) >= 2:
-            registered_domain = ".".join(parts[-2:])
-            if registered_domain in cls.WHITELIST_DOMAINS:
-                return True
+        # 2. Check registered domain (contoh: "bca.co.id")
+        if registered_domain in cls.WHITELIST_DOMAINS:
+            return True
 
-        # 3. Check if hostname END WITHS any whitelisted domain (contoh: "mail.google.com" ends with "google.com")
+        # 3. Check if hostname ends with any whitelisted domain (contoh: "mail.google.com" ends with "google.com")
         for domain in cls.WHITELIST_DOMAINS:
-            if hostname_lower.endswith("." + domain) or hostname_lower == domain:
+            clean_domain = domain.strip().lower()
+            if hostname_lower.endswith("." + clean_domain) or hostname_lower == clean_domain:
                 return True
 
         return False
@@ -580,25 +694,7 @@ class PhishingDetectorService:
             )
 
         # Domain Structure
-        parts = hostname.split(".")
-
-        registered_domain = (
-            ".".join(parts[-2:])
-            if len(parts) >= 2
-            else hostname
-        )
-
-        domain_label = (
-            parts[-2]
-            if len(parts) >= 2
-            else hostname
-        )
-
-        subdomains = (
-            parts[:-2]
-            if len(parts) > 2
-            else []
-        )
+        registered_domain, domain_label, subdomains = cls.extract_domain_parts(hostname)
 
         suspicious_subdomains = [
             sub
@@ -610,22 +706,18 @@ class PhishingDetectorService:
 
         # Brand Impersonation
         for brand in cls.get_target_brands():
-            if len(brand) < 4:
-                continue
-
+            brand_lower = brand.lower().strip()
             domain_lower = domain_label.lower()
 
-            if domain_lower == brand.lower():
+            if domain_lower == brand_lower:
                 continue
 
-            dist = levenshtein_distance(
-                domain_lower,
-                brand.lower(),
-            )
-
-            if (
-                0 < dist <= 2
-                and len(domain_lower) >= 4
+            # Exact brand token found in domain (e.g. "bca-login", "bri-promo", "gopay-claim")
+            if len(brand_lower) >= 3 and (
+                domain_lower.startswith(f"{brand_lower}-")
+                or domain_lower.endswith(f"-{brand_lower}")
+                or f"-{brand_lower}-" in domain_lower
+                or (len(brand_lower) >= 4 and brand_lower in domain_lower)
             ):
                 indicators["brand_impersonation"] = True
                 indicators["suspicious_hostname"] = True
@@ -633,12 +725,31 @@ class PhishingDetectorService:
                 score += 0.40
 
                 reasons.append(
-                    f"Potential brand impersonation: "
-                    f"'{domain_label}' resembles '{brand}' "
-                    f"(distance: {dist})"
+                    f"Brand name detected in domain label: "
+                    f"'{brand}' found in '{domain_label}'"
+                )
+                break
+
+            # Levenshtein distance for typosquatting (only for brands with len >= 4 to avoid false positives)
+            if len(brand_lower) >= 4 and len(domain_lower) >= 4:
+                dist = levenshtein_distance(
+                    domain_lower,
+                    brand_lower,
                 )
 
-                break
+                if 0 < dist <= 2:
+                    indicators["brand_impersonation"] = True
+                    indicators["suspicious_hostname"] = True
+
+                    score += 0.40
+
+                    reasons.append(
+                        f"Potential brand impersonation: "
+                        f"'{domain_label}' resembles '{brand}' "
+                        f"(distance: {dist})"
+                    )
+
+                    break
 
         # Suspicious Hostname Tokens
         suspicious_hostname_tokens = []
@@ -878,19 +989,82 @@ class PhishingDetectorService:
             "suspicious_external_link": False,
             "http_error": False,
             "connection_failed": False,
+            "ssrf_blocked": False,
         }
 
-        headers = {
-            "User-Agent": cls.USER_AGENT
-        }
+        # SSRF Pre-validation
+        is_safe, block_reason = cls.validate_safe_url(url)
+        if not is_safe:
+            indicators["connection_failed"] = True
+            indicators["ssrf_blocked"] = True
+            score += 0.50
+            reasons.append(f"Security Policy: {block_reason}")
+            return {
+                "transit_confidence": round(min(score, 1.0), 2),
+                "reasons": reasons,
+                "indicators": indicators,
+                "redirect_chain": redirect_chain,
+                "external_links_count": 0,
+            }
+
+        session = requests.Session()
+        session.headers.update({"User-Agent": cls.USER_AGENT})
+        current_url = url
+        max_redirects = 5
+        response = None
 
         try:
-            response = requests.get(
-                url,
-                headers=headers,
-                timeout=8,
-                allow_redirects=True,
-            )
+            for _ in range(max_redirects):
+                # Verify safe destination before making request
+                is_safe, block_reason = cls.validate_safe_url(current_url)
+                if not is_safe:
+                    indicators["cross_domain_redirect"] = True
+                    indicators["ssrf_blocked"] = True
+                    score += 0.50
+                    reasons.append(f"Security Policy (Redirect blocked): {block_reason}")
+                    break
+
+                resp = session.get(
+                    current_url,
+                    timeout=(3.0, 5.0),
+                    allow_redirects=False,
+                    stream=True,
+                )
+
+                if resp.is_redirect or resp.status_code in (301, 302, 303, 307, 308):
+                    redirect_chain.append(current_url)
+                    location = resp.headers.get("Location")
+                    if not location:
+                        break
+                    next_url = urljoin(current_url, location)
+
+                    orig_host = (urlparse(current_url).hostname or "").lower()
+                    next_host = (urlparse(next_url).hostname or "").lower()
+                    if orig_host and next_host and orig_host != next_host:
+                        indicators["cross_domain_redirect"] = True
+                        score += 0.35
+                        reasons.append(
+                            f"Cross-domain redirect detected: {orig_host} -> {next_host}"
+                        )
+
+                    current_url = next_url
+                    resp.close()
+                else:
+                    response = resp
+                    if redirect_chain:
+                        redirect_chain.append(current_url)
+                    break
+            else:
+                reasons.append("Too many redirects detected (possible redirect loop)")
+
+            if response is None:
+                return {
+                    "transit_confidence": round(min(score, 1.0), 2),
+                    "reasons": reasons,
+                    "indicators": indicators,
+                    "redirect_chain": redirect_chain,
+                    "external_links_count": 0,
+                }
 
             # HTTP Status
             if response.status_code >= 400:
@@ -902,35 +1076,6 @@ class PhishingDetectorService:
                     f"HTTP error response detected "
                     f"({response.status_code})"
                 )
-
-            # Redirect Chain
-            if response.history:
-                for resp in response.history:
-                    redirect_chain.append(resp.url)
-
-                redirect_chain.append(response.url)
-
-                original_domain = (
-                    urlparse(url).hostname or ""
-                ).lower()
-
-                final_domain = (
-                    urlparse(response.url).hostname or ""
-                ).lower()
-
-                if (
-                    original_domain
-                    and final_domain
-                    and original_domain != final_domain
-                ):
-                    indicators["cross_domain_redirect"] = True
-
-                    score += 0.35
-
-                    reasons.append(
-                        "Cross-domain redirect detected: "
-                        f"{original_domain} -> {final_domain}"
-                    )
 
             # Content Type
             content_type = response.headers.get(
@@ -950,8 +1095,19 @@ class PhishingDetectorService:
                     "external_links_count": 0,
                 }
 
+            # Limit body read to 2 MB to prevent DoS / Memory exhaustion
+            max_bytes = 2 * 1024 * 1024
+            content_chunks = []
+            bytes_read = 0
+            for chunk in response.iter_content(chunk_size=8192, decode_unicode=False):
+                content_chunks.append(chunk)
+                bytes_read += len(chunk)
+                if bytes_read >= max_bytes:
+                    break
+            response_text = b"".join(content_chunks).decode("utf-8", errors="replace")
+
             soup = BeautifulSoup(
-                response.text,
+                response_text,
                 "html.parser",
             )
 
@@ -1553,16 +1709,16 @@ Confidence must be between 0.0 and 1.0.
             return {
                 "verdict": ScanLog.Classification.SAFE,
                 "threat_level": "LOW",
-                "message": "AMAN (100.0%) - Domain ini adalah domain resmi yang terdaftar dalam whitelist.",
+                "message": "AMAN - Domain ini adalah domain resmi yang terdaftar dalam whitelist.",
                 "advice": "Domain ini aman dan merupakan situs resmi. Tetap waspada saat memasukkan data pribadi."
             }
 
-        if score >= cls.SAFE_THRESHOLD:
+        if score >= cls.PHISHING_THRESHOLD:
             return {
-                "verdict": ScanLog.Classification.SAFE,
-                "threat_level": "LOW",
-                "message": f"AMAN ({score_percent:.1f}%) - URL ini aman untuk dikunjungi.",
-                "advice": "Tetap waspada dan periksa URL sebelum memasukkan data pribadi."
+                "verdict": ScanLog.Classification.PHISHING,
+                "threat_level": "CRITICAL",
+                "message": f"BERBAHAYA/PHISHING ({score_percent:.1f}%) - URL ini terdeteksi sebagai phishing!",
+                "advice": "WARNING: JANGAN DIBUKA! URL ini berbahaya. Dapat mencuri data pribadi, kredensial, atau menginstall malware."
             }
 
         if score >= cls.SUSPICIOUS_THRESHOLD:
@@ -1574,10 +1730,10 @@ Confidence must be between 0.0 and 1.0.
             }
 
         return {
-            "verdict": ScanLog.Classification.PHISHING,
-            "threat_level": "CRITICAL",
-            "message": f"BERBAHAYA/PHISHING ({score_percent:.1f}%) - URL ini terdeteksi sebagai phishing!",
-            "advice": "WARNING: JANGAN DIBUKA! URL ini berbahaya. Dapat mencuri data pribadi, kredensial, atau menginstall malware."
+            "verdict": ScanLog.Classification.SAFE,
+            "threat_level": "LOW",
+            "message": f"AMAN ({score_percent:.1f}%) - URL ini memiliki indikasi risiko rendah.",
+            "advice": "Tetap waspada dan periksa URL sebelum memasukkan data pribadi."
         }
 
     # Main Scan Pipeline

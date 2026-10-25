@@ -20,13 +20,14 @@
 <div class="card filter-card p-3 mb-4">
   <form class="row g-2 align-items-center" method="GET">
     <div class="col-lg-7 col-md-6">
-      <input type="text" name="q" class="form-control form-control-custom" placeholder="Search URL or Domain..." />
+      <input type="text" name="q" value="{{ search_query }}" class="form-control form-control-custom" placeholder="Search URL or Domain..." />
     </div>
     <div class="col-lg-3 col-md-4">
       <select name="status" class="form-select form-select-custom">
-        <option value="all" selected>All Status</option>
-        <option value="safe">Safe Only</option>
-        <option value="phishing">Phishing Only</option>
+        <option value="all" {% if status_filter == 'all' %}selected{% endif %}>All Status</option>
+        <option value="safe" {% if status_filter == 'safe' %}selected{% endif %}>Safe Only</option>
+        <option value="suspicious" {% if status_filter == 'suspicious' %}selected{% endif %}>Suspicious Only</option>
+        <option value="phishing" {% if status_filter == 'phishing' %}selected{% endif %}>Phishing Only</option>
       </select>
     </div>
     <div class="col-lg-2 col-md-2 d-grid">

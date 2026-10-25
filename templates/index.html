@@ -37,6 +37,13 @@
   </div>
 </div>
 
+{% if error_message %}
+<div class="alert alert-danger alert-dismissible fade show mx-auto mb-4" role="alert" style="max-width: 760px">
+  <i class="bi bi-exclamation-triangle-fill me-2"></i><strong>Pemberitahuan:</strong> {{ error_message }}
+  <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close"></button>
+</div>
+{% endif %}
+
 {% if scan_result %}
 <!-- Result Card (Asli) -->
 <div class="card custom-card mx-auto mb-4 p-3 style-result border-0 shadow-sm" style="max-width: 760px">
